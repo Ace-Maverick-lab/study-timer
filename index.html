@@ -85,6 +85,8 @@
     font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em;
     text-transform:uppercase; color:var(--paper-dim);
   }
+  .label-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px; }
+  .label-row label{ margin:0; }
   .seg{
     display:grid; grid-auto-flow:column; gap:2px;
     background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:3px;
@@ -241,6 +243,7 @@
 
   .chart-card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
   .chart-card h3{ margin:0 0 12px; font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--paper-dim); font-weight:700;}
+  .chart-endcaps{ display:flex; justify-content:space-between; margin-top:6px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--muted); }
 
   .q-table{ display:flex; flex-direction:column; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden;}
   .q-row{ display:flex; justify-content:space-between; align-items:center; background:var(--panel); padding:9px 14px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;}
@@ -313,7 +316,10 @@
       <button class="primary-btn" id="beginBtn">Begin session</button>
 
       <div class="field">
-        <label>Past sessions</label>
+        <div class="label-row">
+          <label>Past sessions</label>
+          <button class="ghost-btn" id="trendsBtn" style="padding:6px 10px;">View trends</button>
+        </div>
         <div class="history-list" id="historyList">
           <div class="history-empty">No sessions saved yet.</div>
         </div>
@@ -364,6 +370,48 @@
       <div class="an-actions">
         <button class="ghost-btn" id="backSetupBtn">New session</button>
         <button class="primary-btn" id="reviewDoneBtn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRENDS SCREEN -->
+  <div id="trends" class="screen">
+    <div class="an-wrap">
+      <div class="an-head">
+        <div>
+          <h2>Your trends</h2>
+          <p id="trendsMeta">—</p>
+        </div>
+      </div>
+
+      <div id="trendsEmpty" class="history-empty" style="display:none;">
+        Complete at least two sessions to see trends over time.
+      </div>
+
+      <div id="trendsBody" style="display:flex; flex-direction:column; gap:24px;">
+        <div class="stat-grid" id="trendStatGrid"></div>
+
+        <div class="chart-card">
+          <h3>Average pace per session</h3>
+          <div id="paceChartHolder"></div>
+          <div class="chart-endcaps" id="paceChartCaps"></div>
+        </div>
+
+        <div class="chart-card" id="overRateCard">
+          <h3>Over-target rate (countdown sessions)</h3>
+          <div id="overRateChartHolder"></div>
+          <div class="chart-endcaps" id="overRateChartCaps"></div>
+        </div>
+
+        <div class="chart-card" id="fatigueCard">
+          <h3>Pacing fatigue — last third vs first third</h3>
+          <div id="fatigueChartHolder"></div>
+          <div class="chart-endcaps" id="fatigueChartCaps"></div>
+        </div>
+      </div>
+
+      <div class="an-actions">
+        <button class="primary-btn" id="trendsDoneBtn">Done</button>
       </div>
     </div>
   </div>
@@ -696,7 +744,7 @@
 
   // ---------------- SCREEN SWITCH ----------------
   function show(id){
-    ['setup','session','analysis'].forEach(function(s){
+    ['setup','session','analysis','trends'].forEach(function(s){
       document.getElementById(s).classList.toggle('active', s===id);
     });
   }
@@ -915,6 +963,184 @@
 
   document.getElementById('backSetupBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
   document.getElementById('reviewDoneBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
+
+  // ---------------- TRENDS (cross-session analysis) ----------------
+  function fmtDateShort(d){
+    return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  }
+  function fmtSigned(secs){
+    var sign = secs>0 ? '+' : (secs<0 ? '\u2212' : '');
+    return sign + fmtShort(Math.abs(secs));
+  }
+
+  function summarizeSessions(list){
+    // list is newest-first from storage; work in chronological order (oldest -> newest)
+    var chron = list.slice().reverse();
+    return chron.map(function(s){
+      var qs = s.questions || [];
+      var n = qs.length;
+      var avg = n ? qs.reduce(function(a,q){return a+q.seconds;},0)/n : 0;
+      var overRate = null;
+      if(s.mode==='countdown' && n){
+        var overCount = qs.filter(function(q){return q.over;}).length;
+        overRate = overCount/n;
+      }
+      var fatigue = null;
+      if(n>=3){
+        var third = Math.max(1, Math.ceil(n/3));
+        var first = qs.slice(0, third);
+        var last = qs.slice(n-third);
+        var favg = first.reduce(function(a,q){return a+q.seconds;},0)/first.length;
+        var lavg = last.reduce(function(a,q){return a+q.seconds;},0)/last.length;
+        fatigue = lavg - favg;
+      }
+      return { date:new Date(s.date), mode:s.mode, count:n, avg:avg, overRate:overRate, fatigue:fatigue };
+    });
+  }
+
+  function lineChartSVG(vals, opts){
+    opts = opts || {};
+    var w=480, h=110, pad=10;
+    var n = vals.length;
+    if(n===0) return '';
+    var min = opts.min!==undefined ? opts.min : Math.min.apply(null, vals);
+    var max = opts.max!==undefined ? opts.max : Math.max.apply(null, vals);
+    if(min===max){ min -= 1; max += 1; }
+    var range = max-min;
+    var xStep = n>1 ? (w-pad*2)/(n-1) : 0;
+    function xy(i){
+      var x = pad + i*xStep;
+      var y = h-pad - ((vals[i]-min)/range)*(h-pad*2);
+      return [x,y];
+    }
+    var pts = [];
+    for(var i=0;i<n;i++){ pts.push(xy(i)); }
+    var path = pts.map(function(p,i){ return (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
+    var svg = '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none">';
+    if(opts.zeroLine && min<0 && max>0){
+      var zy = h-pad - ((0-min)/range)*(h-pad*2);
+      svg += '<line x1="0" y1="'+zy.toFixed(1)+'" x2="'+w+'" y2="'+zy.toFixed(1)+'" stroke="var(--muted)" stroke-dasharray="3,3" stroke-width="1"/>';
+    }
+    svg += '<path d="'+path+'" fill="none" stroke="'+(opts.stroke||'var(--green)')+'" stroke-width="2"/>';
+    pts.forEach(function(p,i){
+      var color = opts.colorFn ? opts.colorFn(vals[i]) : (opts.stroke||'var(--green)');
+      svg += '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3.4" fill="'+color+'"/>';
+    });
+    svg += '</svg>';
+    return svg;
+  }
+
+  function barChartSVG(vals, opts){
+    opts = opts || {};
+    var w=480, h=110, pad=8;
+    var n = vals.length;
+    if(n===0) return '';
+    var max = opts.max!==undefined ? opts.max : Math.max.apply(null, vals.concat([1]));
+    var barW = Math.max(6, (w-pad*2)/n - 4);
+    var svg = '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none">';
+    for(var i=0;i<n;i++){
+      var bh = (vals[i]/max)*(h-pad*2);
+      var x = pad + i*((w-pad*2)/n);
+      var y = h-pad-bh;
+      var color = opts.colorFn ? opts.colorFn(vals[i]) : 'var(--paper)';
+      svg += '<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+color+'" rx="2"/>';
+    }
+    svg += '</svg>';
+    return svg;
+  }
+
+  function showTrends(){
+    loadSessions().then(function(list){
+      var meta = document.getElementById('trendsMeta');
+      var empty = document.getElementById('trendsEmpty');
+      var body = document.getElementById('trendsBody');
+
+      if(list.length < 2){
+        meta.textContent = list.length + ' session' + (list.length===1?'':'s') + ' saved';
+        empty.style.display = 'block';
+        body.style.display = 'none';
+        show('trends');
+        return;
+      }
+      empty.style.display = 'none';
+      body.style.display = 'flex';
+
+      var summaries = summarizeSessions(list);
+      var windowed = summaries.slice(-20); // most recent 20 for chart readability
+
+      meta.textContent = list.length + ' sessions saved \u00b7 showing the most recent ' + windowed.length;
+
+      // ---- overall stats (computed across ALL raw questions, not per-session averages) ----
+      var allQ = [];
+      var countdownQ = [];
+      list.forEach(function(s){
+        var qs = s.questions || [];
+        allQ = allQ.concat(qs);
+        if(s.mode==='countdown') countdownQ = countdownQ.concat(qs);
+      });
+      var overallAvg = allQ.length ? allQ.reduce(function(a,q){return a+q.seconds;},0)/allQ.length : 0;
+      var overallOverRate = countdownQ.length ? countdownQ.filter(function(q){return q.over;}).length/countdownQ.length : null;
+      var fatigueVals = summaries.map(function(s){return s.fatigue;}).filter(function(v){return v!==null;});
+      var avgFatigue = fatigueVals.length ? fatigueVals.reduce(function(a,b){return a+b;},0)/fatigueVals.length : null;
+
+      var grid = document.getElementById('trendStatGrid');
+      grid.innerHTML = '';
+      var stats = [
+        ['Sessions', list.length],
+        ['Overall avg pace', fmtShort(overallAvg)],
+        ['Over-target rate', overallOverRate===null ? '\u2014' : Math.round(overallOverRate*100)+'%'],
+        ['Late-Q slowdown', avgFatigue===null ? '\u2014' : fmtSigned(avgFatigue)]
+      ];
+      stats.forEach(function(s){
+        var box = document.createElement('div'); box.className='stat-box';
+        box.innerHTML = '<div class="v">'+s[1]+'</div><div class="l">'+s[0]+'</div>';
+        grid.appendChild(box);
+      });
+
+      // ---- chart 1: average pace per session ----
+      var paceVals = windowed.map(function(s){return s.avg;});
+      document.getElementById('paceChartHolder').innerHTML = lineChartSVG(paceVals, {stroke:'var(--green)'});
+      document.getElementById('paceChartCaps').innerHTML =
+        '<span>'+fmtDateShort(windowed[0].date)+'</span><span>'+fmtDateShort(windowed[windowed.length-1].date)+'</span>';
+
+      // ---- chart 2: over-target rate per session (countdown sessions only) ----
+      var overSessions = windowed.filter(function(s){ return s.overRate!==null; });
+      var overCard = document.getElementById('overRateCard');
+      if(overSessions.length === 0){
+        overCard.innerHTML = '<h3>Over-target rate (countdown sessions)</h3><div class="history-empty">No countdown-mode sessions yet \u2014 this fills in once you run some with a time target.</div>';
+      } else {
+        overCard.innerHTML = '<h3>Over-target rate (countdown sessions)</h3><div id="overRateChartHolder"></div><div class="chart-endcaps" id="overRateChartCaps"></div>';
+        var overVals = overSessions.map(function(s){ return Math.round(s.overRate*100); });
+        document.getElementById('overRateChartHolder').innerHTML = barChartSVG(overVals, {
+          max:100,
+          colorFn:function(v){ return v>=50 ? 'var(--red)' : (v>=20 ? 'var(--amber)' : 'var(--green)'); }
+        });
+        document.getElementById('overRateChartCaps').innerHTML =
+          '<span>'+fmtDateShort(overSessions[0].date)+'</span><span>'+fmtDateShort(overSessions[overSessions.length-1].date)+'</span>';
+      }
+
+      // ---- chart 3: pacing fatigue (last third minus first third), per session ----
+      var fatigueSessions = windowed.filter(function(s){ return s.fatigue!==null; });
+      var fatigueCard = document.getElementById('fatigueCard');
+      if(fatigueSessions.length === 0){
+        fatigueCard.innerHTML = '<h3>Pacing fatigue \u2014 last third vs first third</h3><div class="history-empty">Needs sessions with at least 3 questions to compare early vs late pacing.</div>';
+      } else {
+        fatigueCard.innerHTML = '<h3>Pacing fatigue \u2014 last third vs first third</h3><div id="fatigueChartHolder"></div><div class="chart-endcaps" id="fatigueChartCaps"></div>';
+        var fatVals = fatigueSessions.map(function(s){ return s.fatigue; });
+        document.getElementById('fatigueChartHolder').innerHTML = lineChartSVG(fatVals, {
+          zeroLine:true,
+          colorFn:function(v){ return v>0 ? 'var(--red)' : 'var(--green)'; }
+        });
+        document.getElementById('fatigueChartCaps').innerHTML =
+          '<span>'+fmtDateShort(fatigueSessions[0].date)+'</span><span>'+fmtDateShort(fatigueSessions[fatigueSessions.length-1].date)+'</span>';
+      }
+
+      show('trends');
+    });
+  }
+
+  document.getElementById('trendsBtn').addEventListener('click', showTrends);
+  document.getElementById('trendsDoneBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', function(){
