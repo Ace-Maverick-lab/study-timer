@@ -1,8 +1,14 @@
-const CACHE = 'study-timer-v1';
-const FILES = ['./index.html', './manifest.json', './playlist.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'study-timer-v2';
+const FILES = ['./index.html', './manifest.json', './playlist.json', './characters.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+  e.waitUntil(
+    caches.open(CACHE).then(c =>
+      // Cache each shell file independently — if one is missing (e.g. characters.json
+      // before you've added one yet) it shouldn't block the rest from being cached.
+      Promise.all(FILES.map(f => c.add(f).catch(() => {})))
+    )
+  );
   self.skipWaiting();
 });
 

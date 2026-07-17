@@ -254,6 +254,31 @@
 
   .an-actions{ display:flex; gap:10px; }
   .an-actions .ghost-btn, .an-actions .primary-btn{ flex:1; }
+
+  /* ---------- CHARACTER POP-UP ---------- */
+  .char-overlay{
+    position:fixed; inset:0; z-index:999;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none; opacity:0;
+  }
+  .char-overlay img{
+    max-width:58vw; max-height:52vh; object-fit:contain;
+    filter:drop-shadow(0 18px 30px rgba(0,0,0,.55));
+  }
+  .char-overlay.show{ animation:charPop 1.15s cubic-bezier(.2,.9,.25,1) forwards; }
+  @keyframes charPop{
+    0%   { opacity:0; transform:scale(.55) rotate(-6deg); }
+    14%  { opacity:1; transform:scale(1.06) rotate(2deg); }
+    24%  { opacity:1; transform:scale(1) rotate(0deg); }
+    78%  { opacity:1; transform:scale(1) rotate(0deg); }
+    100% { opacity:0; transform:scale(.96) rotate(0deg); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .char-overlay.show{ animation:charFade 1.15s ease forwards; }
+    @keyframes charFade{
+      0%{ opacity:0; } 15%{ opacity:1; } 78%{ opacity:1; } 100%{ opacity:0; }
+    }
+  }
 </style>
 </head>
 <body>
@@ -311,6 +336,15 @@
           <button data-val="sequential">In order</button>
         </div>
         <div class="history-empty" id="efStatus">Checking for sound clips&hellip;</div>
+      </div>
+
+      <div class="field">
+        <label>Character pop-up on lock-in</label>
+        <div class="seg" id="charSeg">
+          <button data-val="off" class="on">Off</button>
+          <button data-val="on" data-accent="green">On</button>
+        </div>
+        <div class="history-empty" id="charStatus" style="display:none;">Checking for characters&hellip;</div>
       </div>
 
       <button class="primary-btn" id="beginBtn">Begin session</button>
@@ -415,7 +449,10 @@
       </div>
     </div>
   </div>
+</div>
 
+<div class="char-overlay" id="charOverlay">
+  <img id="charOverlayImg" alt="">
 </div>
 
 <script>
@@ -426,6 +463,7 @@
   var mode = 'stopwatch';        // 'stopwatch' | 'countdown'
   var soundTier = 'off';         // 'off' | 'classic' | 'fun' | 'extra'
   var targetSeconds = 90;
+  var charEnabled = false;
 
   var runState = 'idle';         // 'idle' | 'running' | 'overtime'
   var questionIndex = 1;
@@ -620,6 +658,57 @@
   }
   window.addEventListener('load', loadPlaylist);
 
+  // ---- CHARACTER POP-UP: random shuffle-queue of images, same engine as the sound clips ----
+  var CHAR_CLIPS = [];
+  var charQueue = [];
+  var charIndex = 0;
+  var charHideTimer = null;
+
+  function buildCharQueue(){ charQueue = shuffleArray(CHAR_CLIPS); charIndex = 0; }
+
+  function setCharStatus(count, found){
+    var el = document.getElementById('charStatus');
+    if(!el) return;
+    el.style.display = 'block';
+    if(found && count>0){
+      el.textContent = count + ' character' + (count===1?'':'s') + ' loaded from characters/';
+      el.classList.add('found');
+    } else {
+      el.classList.remove('found');
+      el.innerHTML = 'No characters found. Add a <b>characters/</b> folder next to this file with transparent .png images, and a <b>characters.json</b> listing the filenames — then reload.';
+    }
+  }
+
+  function loadCharacters(){
+    fetch('characters.json?nocache=' + Date.now())
+      .then(function(r){ if(!r.ok) throw new Error('missing'); return r.json(); })
+      .then(function(files){
+        if(!Array.isArray(files) || !files.length){ setCharStatus(0,false); return; }
+        CHAR_CLIPS = files.map(function(f,i){ return { id:'ch_'+i, file:f, label:fileToLabel(f) }; });
+        buildCharQueue();
+        setCharStatus(CHAR_CLIPS.length, true);
+      })
+      .catch(function(){ setCharStatus(0,false); });
+  }
+  window.addEventListener('load', loadCharacters);
+
+  function showCharacterOverlay(){
+    if(CHAR_CLIPS.length === 0) return;
+    var clip;
+    if(charIndex >= charQueue.length) buildCharQueue();
+    clip = charQueue[charIndex++];
+
+    var overlay = document.getElementById('charOverlay');
+    var img = document.getElementById('charOverlayImg');
+    if(charHideTimer){ clearTimeout(charHideTimer); }
+    overlay.classList.remove('show');
+    void overlay.offsetWidth; // restart animation even on rapid back-to-back taps
+    img.src = 'characters/' + clip.file;
+    img.alt = clip.label;
+    overlay.classList.add('show');
+    charHideTimer = setTimeout(function(){ overlay.classList.remove('show'); }, 1200);
+  }
+
   function playLock(){
     if(soundTier==='classic') playClassic();
     else if(soundTier==='fun') playFunPhrase();
@@ -714,6 +803,15 @@
     if(efOrder==='sequential'){ efIndex = 0; } else { buildEfQueue(); }
   });
 
+  var charSeg = document.getElementById('charSeg');
+  charSeg.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    charEnabled = btn.dataset.val === 'on';
+    Array.from(charSeg.children).forEach(function(b){ b.classList.toggle('on', b===btn); });
+    document.getElementById('charStatus').style.display = charEnabled ? 'block' : 'none';
+    if(charEnabled) showCharacterOverlay(); // little preview
+  });
+
   document.getElementById('beginBtn').addEventListener('click', function(){
     if(mode==='countdown'){
       var mn = parseInt(document.getElementById('targetMin').value,10) || 0;
@@ -798,6 +896,7 @@
     var over = mode==='countdown' && elapsedSec > targetSeconds;
     questions.push({ index: questionIndex, seconds: Math.round(elapsedSec*10)/10, over: over });
     playLock();
+    if(charEnabled) showCharacterOverlay();
     addLogChip(questionIndex, elapsedSec, over);
     questionIndex += 1;
     document.getElementById('qCounter').textContent = questionIndex;
