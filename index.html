@@ -25,7 +25,54 @@
     --amber:#e0a458;
     --red:#c1543c;
     --muted:#6b7478;
+    --radius-tile:9px;
+    --tile-glow:none;
   }
+
+  /* ---------- THEMES: cave-man -> futuristic ---------- */
+  body.theme-caveman{
+    --ink:#1b140d; --ink-2:#221a11; --panel:#2b2118; --panel-2:#372a1e;
+    --line:#4a3a29; --paper:#e8d9b8; --paper-dim:#b5a082;
+    --green:#8a9a5b; --amber:#d98d3d; --red:#b1462f; --muted:#6b5c47;
+    --radius-tile:3px; --tile-glow:none;
+  }
+  body.theme-caveman .flap-tile, body.theme-caveman .icon-btn, body.theme-caveman .primary-btn,
+  body.theme-caveman .ghost-btn, body.theme-caveman .stat-box, body.theme-caveman .chart-card,
+  body.theme-caveman .log-chip, body.theme-caveman .history-row{ border-width:2px; }
+
+  body.theme-terminal{
+    --ink:#04120a; --ink-2:#071a0d; --panel:#07200f; --panel-2:#0a2b14;
+    --line:#163a1e; --paper:#43ff77; --paper-dim:#1f8a3d;
+    --green:#7cffb2; --amber:#ffd166; --red:#ff5d5d; --muted:#14431f;
+    --radius-tile:2px; --tile-glow:0 0 10px currentColor;
+  }
+  body.theme-terminal .flap-tile{ text-shadow:0 0 6px rgba(67,255,119,.65); }
+  body.theme-terminal::after{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:900;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.12) 0px, rgba(0,0,0,.12) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode:multiply; opacity:.5;
+  }
+
+  body.theme-neon{
+    --ink:#150a24; --ink-2:#1b0e2e; --panel:#201033; --panel-2:#2a1642;
+    --line:#4a2a6b; --paper:#f5e8ff; --paper-dim:#b48fd6;
+    --green:#33fff0; --amber:#ff7edb; --red:#ff2e63; --muted:#6b4a8f;
+    --radius-tile:10px; --tile-glow:0 0 14px rgba(51,255,240,.35);
+  }
+  body.theme-neon .flap-tile{ box-shadow: var(--tile-glow), inset 0 -18px 22px -18px rgba(0,0,0,.5); }
+  body.theme-neon .primary-btn{ box-shadow:0 0 18px rgba(51,255,240,.4); }
+
+  body.theme-holo{
+    --ink:#060a12; --ink-2:#0a0f1c; --panel:#0d1526; --panel-2:#13203a;
+    --line:#24406b; --paper:#eaf6ff; --paper-dim:#7fa8c9;
+    --green:#4fe3c1; --amber:#ffcf6b; --red:#ff5f6d; --muted:#3a5878;
+    --radius-tile:12px; --tile-glow:0 0 12px rgba(79,227,193,.28);
+  }
+  body.theme-holo .flap-tile, body.theme-holo .chart-card, body.theme-holo .stat-box{
+    box-shadow: var(--tile-glow), inset 0 -18px 22px -18px rgba(0,0,0,.5);
+    border-color:var(--line);
+  }
+
   *{box-sizing:border-box;}
   html,body{height:100%;}
   body{
@@ -39,6 +86,7 @@
     width:100vw;
     user-select:none;
     -webkit-user-select:none;
+    transition:background-color .35s ease, color .35s ease;
   }
   @font-face{
     font-family:'Archivo';
@@ -60,6 +108,7 @@
     align-items:center; justify-content:center;
     padding:32px 20px;
     overflow-y:auto;
+    position:relative;
   }
   .setup-card{
     width:100%; max-width:420px;
@@ -177,18 +226,19 @@
   .flap-sign.show{ opacity:1; }
   .flap-tile{
     background:linear-gradient(180deg,var(--panel-2),var(--panel));
-    border:1px solid var(--line); border-radius:9px;
+    border:1px solid var(--line); border-radius:var(--radius-tile);
     width:52px; height:78px;
     display:flex; align-items:center; justify-content:center;
     font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:44px;
     color:var(--paper); position:relative; overflow:hidden;
     box-shadow: inset 0 -18px 22px -18px rgba(0,0,0,.5);
+    transition:background-color .35s ease, border-color .35s ease, box-shadow .35s ease, border-radius .35s ease;
   }
   .flap-tile::after{
     content:''; position:absolute; left:0; right:0; top:50%; height:1px;
     background:rgba(0,0,0,.45);
   }
-  .flap-tile.small{ width:30px; height:44px; font-size:22px; border-radius:6px;}
+  .flap-tile.small{ width:30px; height:44px; font-size:22px; border-radius:calc(var(--radius-tile) * 0.7);}
   .flap-colon{ font-family:'IBM Plex Mono',monospace; font-size:34px; color:var(--muted); font-weight:700; }
   .flap-tile.flip{ animation:flip .18s ease; }
   @keyframes flip{
@@ -255,6 +305,24 @@
   .an-actions{ display:flex; gap:10px; }
   .an-actions .ghost-btn, .an-actions .primary-btn{ flex:1; }
 
+  /* ---------- THEME PICKER ---------- */
+  .theme-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .theme-card{
+    background:var(--panel); border:1.5px solid var(--line); border-radius:12px;
+    padding:14px; text-align:left; cursor:pointer;
+    display:flex; flex-direction:column; gap:10px;
+    transition:border-color .15s ease, transform .1s ease;
+  }
+  .theme-card:hover{ border-color:var(--paper-dim); }
+  .theme-card:active{ transform:scale(.98); }
+  .theme-card.selected{ border-color:var(--green); box-shadow:0 0 0 1px var(--green); }
+  .theme-card .swatch{ display:flex; gap:5px; }
+  .theme-card .swatch span{ width:20px; height:20px; border-radius:5px; display:block; border:1px solid rgba(255,255,255,.08); }
+  .theme-card .tname{ font-family:'Archivo',sans-serif; font-weight:700; font-size:13.5px; color:var(--paper); display:flex; align-items:center; gap:6px; }
+  .theme-card .ttag{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--paper-dim); letter-spacing:.02em; line-height:1.4; }
+  .theme-card .check{ margin-left:auto; color:var(--green); font-size:13px; opacity:0; }
+  .theme-card.selected .check{ opacity:1; }
+
   /* ---------- CHARACTER POP-UP ---------- */
   .char-overlay{
     position:fixed; inset:0; z-index:999;
@@ -286,6 +354,7 @@
 
   <!-- SETUP SCREEN -->
   <div id="setup" class="screen active">
+    <button class="icon-btn" id="settingsBtn" style="position:absolute; top:16px; right:16px; z-index:5;">&#9881; Settings</button>
     <div class="setup-card">
       <div class="brand">
         <p class="eyebrow">Study Timer</p>
@@ -449,6 +518,24 @@
       </div>
     </div>
   </div>
+
+  <!-- SETTINGS SCREEN -->
+  <div id="settings" class="screen">
+    <div class="an-wrap">
+      <div class="an-head">
+        <div>
+          <h2>Settings</h2>
+          <p>Appearance &mdash; pick a look for the app</p>
+        </div>
+      </div>
+
+      <div class="theme-grid" id="themeGrid"></div>
+
+      <div class="an-actions">
+        <button class="primary-btn" id="settingsDoneBtn">Done</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="char-overlay" id="charOverlay">
@@ -464,6 +551,48 @@
   var soundTier = 'off';         // 'off' | 'classic' | 'fun' | 'extra'
   var targetSeconds = 90;
   var charEnabled = false;
+
+  // ---------------- THEME ----------------
+  var THEME_KEY = 'studyTimer:theme';
+  var THEMES = [
+    { id:'caveman',    name:'Cave-Man',        tag:'Stone, bone, torchlight',      swatch:['#1b140d','#e8d9b8','#d98d3d'] },
+    { id:'mechanical', name:'Departure Board', tag:'Split-flap analog (default)',  swatch:['#12171a','#e9e2cf','#4fa98c'] },
+    { id:'terminal',   name:'Retro Terminal',  tag:'Phosphor green CRT',           swatch:['#04120a','#43ff77','#ffd166'] },
+    { id:'neon',       name:'Neon Arcade',     tag:'Synthwave glow',               swatch:['#150a24','#33fff0','#ff7edb'] },
+    { id:'holo',       name:'Holo Future',     tag:'Clean sci-fi glass',           swatch:['#060a12','#4fe3c1','#eaf6ff'] }
+  ];
+  var currentTheme = 'mechanical';
+
+  function applyTheme(id){
+    currentTheme = id;
+    var body = document.body;
+    body.className = body.className.replace(/\btheme-\S+\b/g, '').trim();
+    if(id && id !== 'mechanical'){ body.classList.add('theme-' + id); }
+    try{ localStorage.setItem(THEME_KEY, id); } catch(e){}
+    renderThemeGrid();
+  }
+
+  function renderThemeGrid(){
+    var grid = document.getElementById('themeGrid');
+    if(!grid) return;
+    grid.innerHTML = '';
+    THEMES.forEach(function(t){
+      var card = document.createElement('button');
+      card.className = 'theme-card' + (t.id===currentTheme ? ' selected' : '');
+      card.innerHTML =
+        '<div class="swatch">' + t.swatch.map(function(c){ return '<span style="background:'+c+';"></span>'; }).join('') + '</div>' +
+        '<div class="tname">' + t.name + '<span class="check">&#10003;</span></div>' +
+        '<div class="ttag">' + t.tag + '</div>';
+      card.addEventListener('click', function(){ applyTheme(t.id); });
+      grid.appendChild(card);
+    });
+  }
+
+  (function initTheme(){
+    var saved = 'mechanical';
+    try{ saved = localStorage.getItem(THEME_KEY) || 'mechanical'; } catch(e){}
+    applyTheme(saved);
+  })();
 
   var runState = 'idle';         // 'idle' | 'running' | 'overtime'
   var questionIndex = 1;
@@ -853,7 +982,7 @@
 
   // ---------------- SCREEN SWITCH ----------------
   function show(id){
-    ['setup','session','analysis','trends'].forEach(function(s){
+    ['setup','session','analysis','trends','settings'].forEach(function(s){
       document.getElementById(s).classList.toggle('active', s===id);
     });
   }
@@ -1251,6 +1380,9 @@
 
   document.getElementById('trendsBtn').addEventListener('click', showTrends);
   document.getElementById('trendsDoneBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
+
+  document.getElementById('settingsBtn').addEventListener('click', function(){ renderThemeGrid(); show('settings'); });
+  document.getElementById('settingsDoneBtn').addEventListener('click', function(){ show('setup'); });
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', function(){
