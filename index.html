@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Study Timer</title>
+<meta name="theme-color" content="#12171a">
+<meta name="description" content="Per-question exam pacing timer with session analysis.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Study Timer">
+<style>
+  :root{
+    --ink:#12171a;
+    --ink-2:#181f22;
+    --panel:#1e2629;
+    --panel-2:#242e32;
+    --line:#333d41;
+    --paper:#e9e2cf;
+    --paper-dim:#9aa39f;
+    --green:#4fa98c;
+    --amber:#e0a458;
+    --red:#c1543c;
+    --muted:#6b7478;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+    height:100vh;
+    width:100vw;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  @font-face{
+    font-family:'Archivo';
+    src:local('Archivo');
+  }
+  .mono{font-family:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;font-variant-numeric:tabular-nums;}
+
+  #app{height:100%;width:100%;position:relative;}
+  .screen{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    opacity:0; pointer-events:none;
+    transition:opacity .25s ease;
+  }
+  .screen.active{opacity:1; pointer-events:auto;}
+
+  /* ---------- SETUP ---------- */
+  #setup{
+    align-items:center; justify-content:center;
+    padding:32px 20px;
+    overflow-y:auto;
+  }
+  .setup-card{
+    width:100%; max-width:420px;
+    display:flex; flex-direction:column; gap:22px;
+  }
+  .brand{
+    text-align:left;
+    margin-bottom:4px;
+  }
+  .brand .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--green); margin:0 0 6px 0;
+  }
+  .brand h1{
+    margin:0; font-size:30px; font-weight:800; letter-spacing:-.01em; color:var(--paper);
+  }
+  .brand p{
+    margin:8px 0 0; font-size:13.5px; color:var(--paper-dim); line-height:1.5; max-width:38ch;
+  }
+  .field{display:flex; flex-direction:column; gap:9px;}
+  .field label{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--paper-dim);
+  }
+  .seg{
+    display:grid; grid-auto-flow:column; gap:2px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:3px;
+  }
+  .seg button{
+    background:transparent; border:none; color:var(--paper-dim);
+    font-family:'Archivo',sans-serif; font-size:13.5px; font-weight:600;
+    padding:11px 6px; border-radius:8px; cursor:pointer; transition:background .15s, color .15s;
+  }
+  .seg button.on{ background:var(--panel-2); color:var(--paper); }
+  .seg button.on[data-accent="green"]{ color:var(--green); }
+  .seg button:focus-visible{ outline:2px solid var(--green); outline-offset:2px; }
+
+  .countdown-target{
+    display:flex; align-items:center; gap:10px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px;
+  }
+  .countdown-target input{
+    width:100%; background:transparent; border:none; color:var(--paper);
+    font-family:'IBM Plex Mono',monospace; font-size:20px; text-align:center; outline:none;
+  }
+  .countdown-target span{ color:var(--paper-dim); font-family:'IBM Plex Mono',monospace; font-size:12px;}
+
+  .primary-btn{
+    margin-top:6px;
+    background:var(--green); color:#0e1a16; border:none; border-radius:11px;
+    font-family:'Archivo',sans-serif; font-weight:800; font-size:15.5px;
+    padding:16px; cursor:pointer; letter-spacing:.01em;
+    transition:transform .1s ease, filter .15s ease;
+  }
+  .primary-btn:hover{ filter:brightness(1.08); }
+  .primary-btn:active{ transform:scale(.98); }
+  .primary-btn:focus-visible{ outline:2px solid var(--paper); outline-offset:3px; }
+
+  .ghost-btn{
+    background:transparent; border:1px solid var(--line); color:var(--paper-dim);
+    border-radius:10px; padding:11px; font-family:'IBM Plex Mono',monospace; font-size:12px;
+    letter-spacing:.06em; cursor:pointer; text-transform:uppercase;
+  }
+  .ghost-btn:hover{ color:var(--paper); border-color:var(--paper-dim); }
+
+  .history-list{ display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto; }
+  .history-row{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px; cursor:pointer; font-size:12.5px;
+  }
+  .history-row:hover{ border-color:var(--paper-dim); }
+  .history-row .hd{ font-family:'IBM Plex Mono',monospace; color:var(--paper-dim); font-size:11px;}
+  .history-empty{ color:var(--muted); font-size:12.5px; font-family:'IBM Plex Mono',monospace; line-height:1.5; }
+  .history-empty b{ color:var(--paper-dim); }
+  #efStatus.found{ color:var(--green); }
+
+  /* ---------- SESSION ---------- */
+  #session{ }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  .qnum{
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:.1em;
+    color:var(--paper-dim); text-transform:uppercase;
+  }
+  .qnum b{ color:var(--paper); font-size:15px; letter-spacing:0; }
+  .topbar-right{ display:flex; gap:8px; align-items:center; }
+  .icon-btn{
+    background:var(--panel); border:1px solid var(--line); color:var(--paper-dim);
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.08em;
+    padding:8px 12px; border-radius:8px; cursor:pointer; text-transform:uppercase;
+  }
+  .icon-btn:hover{ color:var(--paper); }
+
+  .tapzone{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; cursor:pointer; position:relative; padding:20px;
+    transition:background .2s ease;
+  }
+  .tapzone.state-idle{ background:transparent; }
+  .tapzone.state-running{ background:rgba(79,169,140,0.05); }
+  .tapzone.state-overtime{ background:rgba(193,84,60,0.10); }
+
+  .flap-row{ display:flex; align-items:center; gap:6px; }
+  .flap-sign{
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:34px;
+    color:var(--red); width:20px; text-align:center; opacity:0;
+  }
+  .flap-sign.show{ opacity:1; }
+  .flap-tile{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line); border-radius:9px;
+    width:52px; height:78px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:44px;
+    color:var(--paper); position:relative; overflow:hidden;
+    box-shadow: inset 0 -18px 22px -18px rgba(0,0,0,.5);
+  }
+  .flap-tile::after{
+    content:''; position:absolute; left:0; right:0; top:50%; height:1px;
+    background:rgba(0,0,0,.45);
+  }
+  .flap-tile.small{ width:30px; height:44px; font-size:22px; border-radius:6px;}
+  .flap-colon{ font-family:'IBM Plex Mono',monospace; font-size:34px; color:var(--muted); font-weight:700; }
+  .flap-tile.flip{ animation:flip .18s ease; }
+  @keyframes flip{
+    0%{ transform:rotateX(0deg); }
+    50%{ transform:rotateX(90deg); filter:brightness(1.3); }
+    100%{ transform:rotateX(0deg); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .flap-tile.flip{ animation:none; }
+  }
+
+  .pace-readout{
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:.08em;
+    color:var(--paper-dim); text-transform:uppercase; min-height:18px;
+  }
+  .pace-readout.warn{ color:var(--amber); }
+  .pace-readout.over{ color:var(--red); }
+
+  .tap-hint{
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--muted);
+    letter-spacing:.1em; text-transform:uppercase; margin-top:6px;
+  }
+
+  .logstrip{
+    flex-shrink:0; display:flex; gap:8px; padding:12px 16px;
+    overflow-x:auto; border-top:1px solid var(--line); background:var(--ink-2);
+  }
+  .log-chip{
+    flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:6px 10px; min-width:56px;
+  }
+  .log-chip .n{ font-size:9.5px; color:var(--muted); font-family:'IBM Plex Mono',monospace; letter-spacing:.06em;}
+  .log-chip .t{ font-size:13px; font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--paper); }
+  .log-chip.over .t{ color:var(--red); }
+  .log-chip.fast .t{ color:var(--green); }
+  .log-empty{ color:var(--muted); font-size:11.5px; font-family:'IBM Plex Mono',monospace; padding:8px; }
+
+  /* ---------- ANALYSIS ---------- */
+  #analysis{ overflow-y:auto; padding:24px 20px 40px; }
+  .an-wrap{ max-width:520px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+  .an-head{ display:flex; justify-content:space-between; align-items:flex-start;}
+  .an-head h2{ margin:0; font-size:22px; font-weight:800; color:var(--paper); }
+  .an-head p{ margin:6px 0 0; font-size:12px; color:var(--paper-dim); font-family:'IBM Plex Mono',monospace;}
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .stat-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:12px 10px; display:flex; flex-direction:column; gap:4px;
+  }
+  .stat-box .v{ font-family:'IBM Plex Mono',monospace; font-size:19px; font-weight:700; color:var(--paper); }
+  .stat-box .l{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--paper-dim); text-transform:uppercase; letter-spacing:.06em;}
+
+  .chart-card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .chart-card h3{ margin:0 0 12px; font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--paper-dim); font-weight:700;}
+
+  .q-table{ display:flex; flex-direction:column; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden;}
+  .q-row{ display:flex; justify-content:space-between; align-items:center; background:var(--panel); padding:9px 14px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;}
+  .q-row .q-i{ color:var(--paper-dim); }
+  .q-row .q-t{ color:var(--paper); font-weight:700;}
+  .q-row.over .q-t{ color:var(--red); }
+  .q-row.fast .q-t{ color:var(--green); }
+
+  .an-actions{ display:flex; gap:10px; }
+  .an-actions .ghost-btn, .an-actions .primary-btn{ flex:1; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SETUP SCREEN -->
+  <div id="setup" class="screen active">
+    <div class="setup-card">
+      <div class="brand">
+        <p class="eyebrow">Study Timer</p>
+        <h1>Pace your practice.</h1>
+        <p>Tap once to start a question, tap again to lock it in. Built to show you where the minutes actually go.</p>
+      </div>
+
+      <div class="field">
+        <label>Clock mode</label>
+        <div class="seg" id="modeSeg">
+          <button data-val="stopwatch" class="on" data-accent="green">Stopwatch</button>
+          <button data-val="countdown">Countdown</button>
+        </div>
+      </div>
+
+      <div class="field" id="targetField" style="display:none;">
+        <label>Time per question</label>
+        <div class="countdown-target">
+          <input type="number" id="targetMin" min="0" max="59" value="1" />
+          <span>min</span>
+          <input type="number" id="targetSec" min="0" max="59" value="30" />
+          <span>sec</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>When you lock in an answer</label>
+        <div class="seg" id="soundSeg" style="grid-auto-flow:row; grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr);">
+          <button data-val="off" class="on">Silent</button>
+          <button data-val="classic">Classic tick</button>
+          <button data-val="fun">Fun</button>
+          <button data-val="extra">Extra fun</button>
+        </div>
+      </div>
+
+      <div class="field" id="funOrderField" style="display:none;">
+        <label>Phrase order</label>
+        <div class="seg" id="funOrderSeg">
+          <button data-val="random" class="on">Random</button>
+          <button data-val="sequential">In order</button>
+        </div>
+      </div>
+
+      <div class="field" id="efOrderField" style="display:none;">
+        <label>Clip order</label>
+        <div class="seg" id="efOrderSeg">
+          <button data-val="random" class="on">Random</button>
+          <button data-val="sequential">In order</button>
+        </div>
+        <div class="history-empty" id="efStatus">Checking for sound clips&hellip;</div>
+      </div>
+
+      <button class="primary-btn" id="beginBtn">Begin session</button>
+
+      <div class="field">
+        <label>Past sessions</label>
+        <div class="history-list" id="historyList">
+          <div class="history-empty">No sessions saved yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SESSION SCREEN -->
+  <div id="session" class="screen">
+    <div class="topbar">
+      <div class="qnum">Question <b id="qCounter">1</b></div>
+      <div class="topbar-right">
+        <span class="icon-btn" id="modeLabel">STOPWATCH</span>
+        <button class="icon-btn" id="endBtn">End</button>
+      </div>
+    </div>
+
+    <div class="tapzone state-idle" id="tapzone">
+      <div class="flap-row" id="flapRow"></div>
+      <div class="pace-readout" id="paceReadout"></div>
+      <div class="tap-hint" id="tapHint">Tap anywhere to start Question 1</div>
+    </div>
+
+    <div class="logstrip" id="logStrip">
+      <div class="log-empty">Locked-in questions will appear here.</div>
+    </div>
+  </div>
+
+  <!-- ANALYSIS SCREEN -->
+  <div id="analysis" class="screen">
+    <div class="an-wrap">
+      <div class="an-head">
+        <div>
+          <h2>Session review</h2>
+          <p id="anMeta">—</p>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="statGrid"></div>
+
+      <div class="chart-card">
+        <h3>Time per question</h3>
+        <div id="chartHolder"></div>
+      </div>
+
+      <div class="q-table" id="qTable"></div>
+
+      <div class="an-actions">
+        <button class="ghost-btn" id="backSetupBtn">New session</button>
+        <button class="primary-btn" id="reviewDoneBtn">Done</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------- STATE ----------------
+  var mode = 'stopwatch';        // 'stopwatch' | 'countdown'
+  var soundTier = 'off';         // 'off' | 'classic' | 'fun' | 'extra'
+  var targetSeconds = 90;
+
+  var runState = 'idle';         // 'idle' | 'running' | 'overtime'
+  var questionIndex = 1;
+  var startTs = 0;
+  var overtimeStartTs = 0;
+  var rafId = null;
+  var questions = [];            // {index, seconds, over}
+  var sessionStartedAt = null;
+  var lastDigits = [];
+
+  // ---------------- AUDIO ----------------
+  var actx = null;
+  function ac(){
+    if(!actx){ actx = new (window.AudioContext || window.webkitAudioContext)(); }
+    if(actx.state === 'suspended'){ actx.resume(); }
+    return actx;
+  }
+  function tone(freq, dur, opts){
+    opts = opts || {};
+    var c = ac();
+    var t0 = c.currentTime + (opts.delay||0);
+    var osc = c.createOscillator();
+    var gain = c.createGain();
+    osc.type = opts.type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    if(opts.slideTo){ osc.frequency.exponentialRampToValueAtTime(opts.slideTo, t0+dur); }
+    var peak = opts.gain !== undefined ? opts.gain : 0.18;
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0+0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    osc.connect(gain).connect(c.destination);
+    osc.start(t0);
+    osc.stop(t0+dur+0.02);
+  }
+  function playClassic(){ tone(1300,0.05,{type:'square',gain:0.09}); }
+
+  function shuffleArray(arr){
+    var a = arr.slice();
+    for(var i=a.length-1;i>0;i--){
+      var j = Math.floor(Math.random()*(i+1));
+      var tmp=a[i]; a[i]=a[j]; a[j]=tmp;
+    }
+    return a;
+  }
+
+  // ---- FUN TIER: spoken phrase bank (text-to-speech), same engine as the chess clock ----
+  var STUDY_PHRASES = [
+    { text:"Locked in.", cat:"dry" },
+    { text:"Noted. Next question.", cat:"dry" },
+    { text:"Time recorded.", cat:"dry" },
+    { text:"That's on the board.", cat:"dry" },
+    { text:"Answer submitted.", cat:"dry" },
+    { text:"Moving on.", cat:"dry" },
+    { text:"Nice pace, keep it rolling.", cat:"coach" },
+    { text:"Good instinct. Trust it next time too.", cat:"coach" },
+    { text:"You're building real momentum.", cat:"coach" },
+    { text:"Solid. Carry that into the next one.", cat:"coach" },
+    { text:"That's the rhythm you want.", cat:"coach" },
+    { text:"Steady hands. Keep going.", cat:"coach" },
+    { text:"Pencils down on that one.", cat:"proctor" },
+    { text:"Time's called. Next question, please.", cat:"proctor" },
+    { text:"That response has been recorded.", cat:"proctor" },
+    { text:"Please proceed to the next item.", cat:"proctor" },
+    { text:"Marks locked in for that question.", cat:"proctor" },
+    { text:"One question down. The exam trembles.", cat:"dramatic" },
+    { text:"Another one falls before you.", cat:"dramatic" },
+    { text:"The clock has been defeated. For now.", cat:"dramatic" },
+    { text:"History will remember this attempt.", cat:"dramatic" },
+    { text:"The margin fills with victory.", cat:"dramatic" },
+    { text:"Boom. Next.", cat:"hype" },
+    { text:"Let's go, on to the next one.", cat:"hype" },
+    { text:"That's a wrap on this question.", cat:"hype" },
+    { text:"Question closed. Keep the streak alive.", cat:"hype" },
+    { text:"And that's how it's done.", cat:"hype" },
+    { text:"Was that your final answer?", cat:"snarky" },
+    { text:"Bold guess. Bold.", cat:"snarky" },
+    { text:"Well, it's an answer.", cat:"snarky" },
+    { text:"The clock is watching. It always is.", cat:"snarky" },
+    { text:"Interesting. We'll see.", cat:"snarky" }
+  ];
+  var funOrder = 'random';
+  var funIndex = 0;
+  var funQueue = [];
+  function buildFunQueue(){ funQueue = shuffleArray(STUDY_PHRASES); funIndex = 0; }
+  buildFunQueue();
+
+  function playFunPhrase(){
+    if(!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    var phrase;
+    if(funOrder==='random'){
+      if(funIndex >= funQueue.length) buildFunQueue();
+      phrase = funQueue[funIndex++];
+    } else {
+      phrase = STUDY_PHRASES[funIndex % STUDY_PHRASES.length];
+      funIndex++;
+    }
+    var utt = new SpeechSynthesisUtterance(phrase.text);
+    utt.rate = 1.08; utt.pitch = 1.0; utt.volume = 1.0;
+    var voices = window.speechSynthesis.getVoices();
+    if(voices.length){
+      var engVoices = voices.filter(function(v){ return v.lang && v.lang.indexOf('en')===0; });
+      if(engVoices.length){
+        var cats = ['dry','coach','proctor','dramatic','hype','snarky'];
+        var idx = cats.indexOf(phrase.cat);
+        utt.voice = engVoices[(idx<0?0:idx) % engVoices.length];
+      }
+    }
+    window.speechSynthesis.speak(utt);
+  }
+  if('speechSynthesis' in window){
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = function(){ window.speechSynthesis.getVoices(); };
+  }
+
+  // ---- EXTRA FUN TIER: real audio clips from sounds/ + playlist.json, same engine as the chess clock ----
+  var EXTRA_CLIPS = [];
+  var efOrder = 'random';
+  var efIndex = 0;
+  var efQueue = [];
+  var efCache = {};
+  var efLoading = {};
+
+  function buildEfQueue(){ efQueue = shuffleArray(EXTRA_CLIPS); efIndex = 0; }
+
+  function fileToLabel(filename){
+    return filename.replace(/\.[^.]+$/, '').replace(/\s*\(\d+\)\s*/g,' ')
+      .replace(/[_-]/g,' ').trim().replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  }
+
+  function loadClip(clip){
+    var url = 'sounds/' + clip.file;
+    if(efCache[url]) return Promise.resolve(efCache[url]);
+    if(efLoading[url]) return efLoading[url];
+    efLoading[url] = fetch(url)
+      .then(function(r){ if(!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
+      .then(function(ab){ return ac().decodeAudioData(ab); })
+      .then(function(buf){ efCache[url] = buf; return buf; });
+    return efLoading[url];
+  }
+
+  function playBuffer(buf){
+    var c = ac();
+    var src = c.createBufferSource();
+    src.buffer = buf;
+    var g = c.createGain(); g.gain.value = 1.0;
+    src.connect(g); g.connect(c.destination);
+    src.start();
+  }
+
+  function playExtraFunClip(){
+    if(EXTRA_CLIPS.length === 0) return;
+    var clip;
+    if(efOrder==='random'){
+      if(efIndex >= efQueue.length) buildEfQueue();
+      clip = efQueue[efIndex++];
+    } else {
+      clip = EXTRA_CLIPS[efIndex % EXTRA_CLIPS.length];
+      efIndex++;
+    }
+    var url = 'sounds/' + clip.file;
+    if(efCache[url]){ playBuffer(efCache[url]); }
+    else {
+      loadClip(clip).then(playBuffer).catch(function(){
+        tone(440,0.12,{type:'square',gain:0.12}); // fallback blip if the file is missing
+      });
+    }
+  }
+
+  function setExtraFunStatus(count, found){
+    var el = document.getElementById('efStatus');
+    if(!el) return;
+    if(found && count>0){
+      el.textContent = count + ' clip' + (count===1?'':'s') + ' loaded from sounds/';
+      el.classList.add('found');
+    } else {
+      el.classList.remove('found');
+      el.innerHTML = 'No clips found. Add a <b>sounds/</b> folder next to this file with your .mp3s, and a <b>playlist.json</b> listing the filenames — then reload.';
+    }
+  }
+
+  function loadPlaylist(){
+    fetch('playlist.json?nocache=' + Date.now())
+      .then(function(r){ if(!r.ok) throw new Error('missing'); return r.json(); })
+      .then(function(files){
+        if(!Array.isArray(files) || !files.length){ setExtraFunStatus(0,false); return; }
+        EXTRA_CLIPS = files.map(function(f,i){ return { id:'ef_'+i, file:f, label:fileToLabel(f) }; });
+        buildEfQueue();
+        setExtraFunStatus(EXTRA_CLIPS.length, true);
+      })
+      .catch(function(){ setExtraFunStatus(0,false); });
+  }
+  window.addEventListener('load', loadPlaylist);
+
+  function playLock(){
+    if(soundTier==='classic') playClassic();
+    else if(soundTier==='fun') playFunPhrase();
+    else if(soundTier==='extra') playExtraFunClip();
+  }
+  function playOvertimeAlert(){
+    if(soundTier==='off') return;
+    tone(220,0.22,{type:'sawtooth',gain:0.10,slideTo:160});
+  }
+
+  // ---------------- HELPERS ----------------
+  function pad2(n){ return (n<10?'0':'')+n; }
+  function fmtParts(totalMs, negative){
+    var ms = Math.abs(totalMs);
+    var m = Math.floor(ms/60000);
+    var s = Math.floor((ms%60000)/1000);
+    var t = Math.floor((ms%1000)/100);
+    return {sign: negative?'+':'', m:pad2(Math.min(m,99)), s:pad2(s), t:String(t)};
+  }
+  function fmtShort(totalSeconds){
+    var neg = totalSeconds < 0;
+    var abs = Math.abs(Math.round(totalSeconds));
+    var m = Math.floor(abs/60), s = abs%60;
+    return (neg?'+':'')+m+':'+pad2(s);
+  }
+
+  // ---------------- STORAGE ----------------
+  function loadSessions(){
+    return window.storage.get('sessions', false)
+      .then(function(r){ return r ? JSON.parse(r.value) : []; })
+      .catch(function(){ return []; });
+  }
+  function saveSessions(list){
+    return window.storage.set('sessions', JSON.stringify(list), false).catch(function(){});
+  }
+  function persistCurrentSession(){
+    var summary = {
+      id: 's'+Date.now(),
+      date: new Date().toISOString(),
+      mode: mode,
+      targetSeconds: mode==='countdown' ? targetSeconds : null,
+      soundTier: soundTier,
+      questions: questions
+    };
+    loadSessions().then(function(list){
+      list.unshift(summary);
+      if(list.length>30) list = list.slice(0,30);
+      saveSessions(list).then(renderHistory);
+    });
+    return summary;
+  }
+
+  // ---------------- SETUP SCREEN ----------------
+  var modeSeg = document.getElementById('modeSeg');
+  var soundSeg = document.getElementById('soundSeg');
+  var targetField = document.getElementById('targetField');
+
+  modeSeg.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    mode = btn.dataset.val;
+    Array.from(modeSeg.children).forEach(function(b){ b.classList.toggle('on', b===btn); });
+    targetField.style.display = (mode==='countdown') ? 'flex' : 'none';
+  });
+  var funOrderField = document.getElementById('funOrderField');
+  var efOrderField = document.getElementById('efOrderField');
+  var funOrderSeg = document.getElementById('funOrderSeg');
+  var efOrderSeg = document.getElementById('efOrderSeg');
+
+  soundSeg.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    soundTier = btn.dataset.val;
+    Array.from(soundSeg.children).forEach(function(b){ b.classList.toggle('on', b===btn); });
+    funOrderField.style.display = (soundTier==='fun') ? 'flex' : 'none';
+    efOrderField.style.display = (soundTier==='extra') ? 'flex' : 'none';
+    // little preview
+    if(soundTier==='classic') playClassic();
+    else if(soundTier==='fun') playFunPhrase();
+    else if(soundTier==='extra') playExtraFunClip();
+  });
+
+  funOrderSeg.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    funOrder = btn.dataset.val;
+    Array.from(funOrderSeg.children).forEach(function(b){ b.classList.toggle('on', b===btn); });
+    if(funOrder==='sequential'){ funIndex = 0; } else { buildFunQueue(); }
+  });
+
+  efOrderSeg.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    efOrder = btn.dataset.val;
+    Array.from(efOrderSeg.children).forEach(function(b){ b.classList.toggle('on', b===btn); });
+    if(efOrder==='sequential'){ efIndex = 0; } else { buildEfQueue(); }
+  });
+
+  document.getElementById('beginBtn').addEventListener('click', function(){
+    if(mode==='countdown'){
+      var mn = parseInt(document.getElementById('targetMin').value,10) || 0;
+      var sc = parseInt(document.getElementById('targetSec').value,10) || 0;
+      targetSeconds = Math.max(1, mn*60+sc);
+    }
+    startSession();
+  });
+
+  function renderHistory(){
+    loadSessions().then(function(list){
+      var el = document.getElementById('historyList');
+      if(!list.length){ el.innerHTML = '<div class="history-empty">No sessions saved yet.</div>'; return; }
+      el.innerHTML = '';
+      list.slice(0,8).forEach(function(s){
+        var d = new Date(s.date);
+        var avg = s.questions.length ? (s.questions.reduce(function(a,q){return a+q.seconds;},0)/s.questions.length) : 0;
+        var row = document.createElement('div');
+        row.className = 'history-row';
+        row.innerHTML = '<div><div>'+ s.questions.length +' questions &middot; '+ (s.mode==='countdown'?'Countdown':'Stopwatch') +'</div>' +
+          '<div class="hd">'+ d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) +' &middot; avg '+ fmtShort(avg) +'</div></div>';
+        row.addEventListener('click', function(){ showAnalysisFor(s); });
+        el.appendChild(row);
+      });
+    });
+  }
+  renderHistory();
+
+  // ---------------- SCREEN SWITCH ----------------
+  function show(id){
+    ['setup','session','analysis'].forEach(function(s){
+      document.getElementById(s).classList.toggle('active', s===id);
+    });
+  }
+
+  // ---------------- SESSION LOGIC ----------------
+  function startSession(){
+    runState = 'idle';
+    questionIndex = 1;
+    questions = [];
+    sessionStartedAt = Date.now();
+    document.getElementById('modeLabel').textContent = mode==='countdown' ? 'COUNTDOWN' : 'STOPWATCH';
+    document.getElementById('qCounter').textContent = questionIndex;
+    document.getElementById('tapHint').textContent = 'Tap anywhere to start Question 1';
+    document.getElementById('paceReadout').textContent = '';
+    document.getElementById('paceReadout').className = 'pace-readout';
+    document.getElementById('logStrip').innerHTML = '<div class="log-empty">Locked-in questions will appear here.</div>';
+    lastDigits = [];
+    renderFlap(mode==='countdown' ? targetSeconds*1000 : 0, false);
+    show('session');
+  }
+
+  var tapzone = document.getElementById('tapzone');
+  tapzone.addEventListener('click', onTap);
+  window.addEventListener('keydown', function(e){
+    if(e.code==='Space' && document.getElementById('session').classList.contains('active')){
+      e.preventDefault(); onTap();
+    }
+  });
+
+  function onTap(){
+    if(runState==='idle'){
+      beginQuestion();
+    } else {
+      lockInQuestion();
+      beginQuestion();
+    }
+  }
+
+  function beginQuestion(){
+    runState = 'running';
+    startTs = performance.now();
+    overtimeStartTs = 0;
+    tapzone.className = 'tapzone state-running';
+    document.getElementById('tapHint').textContent = 'Tap to lock in';
+    tick();
+  }
+
+  function lockInQuestion(){
+    var elapsedMs = performance.now() - startTs;
+    var elapsedSec = elapsedMs/1000;
+    var over = mode==='countdown' && elapsedSec > targetSeconds;
+    questions.push({ index: questionIndex, seconds: Math.round(elapsedSec*10)/10, over: over });
+    playLock();
+    addLogChip(questionIndex, elapsedSec, over);
+    questionIndex += 1;
+    document.getElementById('qCounter').textContent = questionIndex;
+    cancelAnimationFrame(rafId);
+  }
+
+  function addLogChip(i, secs, over){
+    var strip = document.getElementById('logStrip');
+    if(strip.querySelector('.log-empty')) strip.innerHTML = '';
+    var chip = document.createElement('div');
+    var fast = mode==='countdown' && secs < targetSeconds*0.6;
+    chip.className = 'log-chip' + (over?' over':'') + (fast?' fast':'');
+    chip.innerHTML = '<div class="n">Q'+i+'</div><div class="t">'+fmtShort(secs)+'</div>';
+    strip.appendChild(chip);
+    strip.scrollLeft = strip.scrollWidth;
+  }
+
+  function tick(){
+    var now = performance.now();
+    var elapsedMs = now - startTs;
+    if(mode==='stopwatch'){
+      renderFlap(elapsedMs, false);
+      document.getElementById('paceReadout').textContent = '';
+    } else {
+      var remainMs = targetSeconds*1000 - elapsedMs;
+      if(remainMs > 0){
+        runState = 'running';
+        tapzone.className = 'tapzone state-running';
+        renderFlap(remainMs, false);
+        var pct = remainMs/(targetSeconds*1000);
+        var pr = document.getElementById('paceReadout');
+        if(pct < 0.2){ pr.textContent = 'Running low'; pr.className='pace-readout warn'; }
+        else { pr.textContent=''; pr.className='pace-readout'; }
+      } else {
+        if(runState !== 'overtime'){
+          runState = 'overtime';
+          tapzone.className = 'tapzone state-overtime';
+          playOvertimeAlert();
+        }
+        var overMs = -remainMs;
+        renderFlap(overMs, true);
+        document.getElementById('paceReadout').textContent = 'Over target';
+        document.getElementById('paceReadout').className = 'pace-readout over';
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function renderFlap(ms, negative){
+    var p = fmtParts(ms, negative);
+    var chars = [p.m[0],p.m[1],':',p.s[0],p.s[1],'.',p.t];
+    var row = document.getElementById('flapRow');
+    if(row.children.length === 0){
+      var signEl = document.createElement('div');
+      signEl.className = 'flap-sign'; signEl.id='signEl';
+      row.appendChild(signEl);
+      chars.forEach(function(ch, idx){
+        var el;
+        if(ch===':'){ el = document.createElement('div'); el.className='flap-colon'; el.textContent=':'; }
+        else { el = document.createElement('div'); el.className='flap-tile'; el.textContent=ch; }
+        el.dataset.idx = idx;
+        row.appendChild(el);
+      });
+      lastDigits = chars.slice();
+    }
+    document.getElementById('signEl').classList.toggle('show', !!p.sign);
+    var tiles = row.querySelectorAll('.flap-tile, .flap-colon');
+    chars.forEach(function(ch, idx){
+      var el = tiles[idx];
+      if(!el) return;
+      if(lastDigits[idx] !== ch){
+        el.textContent = ch;
+        if(el.classList.contains('flap-tile')){
+          el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip');
+        }
+      }
+    });
+    lastDigits = chars.slice();
+  }
+
+  document.getElementById('endBtn').addEventListener('click', endSession);
+
+  function endSession(){
+    cancelAnimationFrame(rafId);
+    if(runState !== 'idle' && startTs){
+      // lock in the question currently in progress if it has any meaningful time
+      var elapsedSec = (performance.now()-startTs)/1000;
+      if(elapsedSec > 0.3){
+        var over = mode==='countdown' && elapsedSec > targetSeconds;
+        questions.push({ index: questionIndex, seconds: Math.round(elapsedSec*10)/10, over: over });
+      }
+    }
+    runState = 'idle';
+    var summary = persistCurrentSession();
+    showAnalysisFor(summary);
+  }
+
+  // ---------------- ANALYSIS ----------------
+  function showAnalysisFor(summary){
+    var qs = summary.questions || [];
+    document.getElementById('anMeta').textContent =
+      (qs.length + ' question' + (qs.length===1?'':'s')) + ' \u00b7 ' +
+      (summary.mode==='countdown' ? ('countdown, target ' + fmtShort(summary.targetSeconds)) : 'stopwatch') +
+      ' \u00b7 ' + new Date(summary.date).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+
+    var total = qs.reduce(function(a,q){return a+q.seconds;},0);
+    var avg = qs.length ? total/qs.length : 0;
+    var fastest = qs.length ? Math.min.apply(null, qs.map(function(q){return q.seconds;})) : 0;
+    var slowest = qs.length ? Math.max.apply(null, qs.map(function(q){return q.seconds;})) : 0;
+    var overCount = qs.filter(function(q){return q.over;}).length;
+
+    var grid = document.getElementById('statGrid');
+    grid.innerHTML = '';
+    var stats = [
+      ['Total time', fmtShort(total)],
+      ['Avg / question', fmtShort(avg)],
+      ['Fastest', fmtShort(fastest)],
+      [summary.mode==='countdown' ? 'Over target' : 'Slowest', summary.mode==='countdown' ? overCount : fmtShort(slowest)]
+    ];
+    stats.forEach(function(s){
+      var box = document.createElement('div'); box.className='stat-box';
+      box.innerHTML = '<div class="v">'+s[1]+'</div><div class="l">'+s[0]+'</div>';
+      grid.appendChild(box);
+    });
+
+    // chart
+    var chartHolder = document.getElementById('chartHolder');
+    if(!qs.length){
+      chartHolder.innerHTML = '<div class="history-empty">No questions recorded.</div>';
+    } else {
+      var w = 480, h = 140, pad=6;
+      var maxV = Math.max.apply(null, qs.map(function(q){return q.seconds;}));
+      if(summary.mode==='countdown') maxV = Math.max(maxV, summary.targetSeconds);
+      maxV = maxV || 1;
+      var barW = Math.max(6,(w - pad*2) / qs.length - 4);
+      var svg = '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none">';
+      if(summary.mode==='countdown'){
+        var ty = h - pad - (summary.targetSeconds/maxV)*(h-pad*2);
+        svg += '<line x1="0" y1="'+ty+'" x2="'+w+'" y2="'+ty+'" stroke="var(--muted)" stroke-dasharray="3,3" stroke-width="1"/>';
+      }
+      qs.forEach(function(q, i){
+        var bh = (q.seconds/maxV)*(h-pad*2);
+        var x = pad + i*((w-pad*2)/qs.length);
+        var y = h - pad - bh;
+        var color = q.over ? 'var(--red)' : (summary.mode==='countdown' && q.seconds < summary.targetSeconds*0.6 ? 'var(--green)' : 'var(--paper)');
+        svg += '<rect x="'+x+'" y="'+y+'" width="'+barW+'" height="'+bh+'" fill="'+color+'" rx="2"/>';
+      });
+      svg += '</svg>';
+      chartHolder.innerHTML = svg;
+    }
+
+    var table = document.getElementById('qTable');
+    table.innerHTML = '';
+    qs.forEach(function(q){
+      var row = document.createElement('div');
+      row.className = 'q-row' + (q.over?' over':'') + (summary.mode==='countdown' && q.seconds<summary.targetSeconds*0.6 ? ' fast':'');
+      row.innerHTML = '<span class="q-i">Question '+q.index+'</span><span class="q-t">'+fmtShort(q.seconds)+(q.over?' \u2022 over':'')+'</span>';
+      table.appendChild(row);
+    });
+
+    show('analysis');
+  }
+
+  document.getElementById('backSetupBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
+  document.getElementById('reviewDoneBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
