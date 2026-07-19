@@ -537,9 +537,9 @@
 
       <div class="settings-tabbar" id="settingsTabbar">
         <button class="tab-btn on" data-tab="palette">Palette</button>
-        <button class="tab-btn" data-tab="support">Support</button>
         <button class="tab-btn" data-tab="sounds">Sounds</button>
         <button class="tab-btn" data-tab="characters">Characters</button>
+        <button class="tab-btn" data-tab="support">Support</button>
       </div>
 
       <div class="tab-panel" id="tab-palette">
@@ -1448,7 +1448,7 @@
   document.getElementById('trendsBtn').addEventListener('click', showTrends);
   document.getElementById('trendsDoneBtn').addEventListener('click', function(){ show('setup'); renderHistory(); });
 
-  var SETTINGS_TABS = ['palette','support','sounds','characters'];
+  var SETTINGS_TABS = ['palette','sounds','characters','support'];
   var settingsTabbar = document.getElementById('settingsTabbar');
   function selectSettingsTab(tab){
     Array.from(settingsTabbar.children).forEach(function(b){ b.classList.toggle('on', b.dataset.tab===tab); });
